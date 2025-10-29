@@ -13,10 +13,15 @@ import sys
 import os
 from pathlib import Path
 
-CURRENT_LLAMA_STACK_VERSION = "0.2.23"
+CURRENT_LLAMA_STACK_VERSION = "0.3.0rc2+rhai0"
 LLAMA_STACK_VERSION = os.getenv("LLAMA_STACK_VERSION", CURRENT_LLAMA_STACK_VERSION)
+CURRENT_LLAMA_STACK_CLIENT_VERSION = "v0.3.0rc2"
+LLAMA_STACK_CLIENT_VERSION = os.getenv(
+    "LLAMA_STACK_CLIENT_VERSION", CURRENT_LLAMA_STACK_CLIENT_VERSION
+)
 BASE_REQUIREMENTS = [
     f"llama-stack=={LLAMA_STACK_VERSION}",
+    f"git+https://github.com/llamastack/llama-stack-client-python.git@{LLAMA_STACK_CLIENT_VERSION}",
 ]
 
 # Constrain packages we are patching to ensure reliable and repeatable build
@@ -36,19 +41,38 @@ source_install_command = """RUN tmp_build_dir=$(mktemp -d) && \\
     git checkout {llama_stack_version} && \\
     pip install --no-cache -e ."""
 
+rhai_install_command = """#TODO: remove this once we have a stable version of llama-stack
+RUN pip install --no-cache --no-deps git+https://github.com/opendatahub-io/llama-stack.git@v{llama_stack_version}
+
+#TODO: remove this once we have a stable version of llama-stack-client-python
+RUN pip install --no-cache-dir --no-deps git+https://github.com/llamastack/llama-stack-client-python.git@{llama_stack_client_version}"""
+
 
 def get_llama_stack_install(llama_stack_version):
     # If the version is a commit SHA or a short commit SHA, we need to install from source
     if is_install_from_source(llama_stack_version):
-        print(f"Installing llama-stack from source: {llama_stack_version}")
-        return source_install_command.format(
-            llama_stack_version=llama_stack_version
-        ).rstrip()
+        # Check if this is an RHAI version
+        if "+rhai" in llama_stack_version:
+            print(
+                f"Installing llama-stack from opendatahub-io repo: v{llama_stack_version}"
+            )
+            print(
+                f"Installing llama-stack-client from GitHub: {LLAMA_STACK_CLIENT_VERSION}"
+            )
+            return rhai_install_command.format(
+                llama_stack_version=llama_stack_version,
+                llama_stack_client_version=LLAMA_STACK_CLIENT_VERSION,
+            ).rstrip()
+        else:
+            print(f"Installing llama-stack from source: {llama_stack_version}")
+            return source_install_command.format(
+                llama_stack_version=llama_stack_version
+            ).rstrip()
 
 
 def is_install_from_source(llama_stack_version):
-    """Check if version string is a git commit SHA (no dots = SHA, has dots = version)."""
-    return "." not in llama_stack_version
+    """Check if version string is a git commit SHA (no dots = SHA, has dots = version) or contains +rhai suffix."""
+    return "." not in llama_stack_version or "+rhai" in llama_stack_version
 
 
 def check_llama_installed():

@@ -3,18 +3,24 @@
 set -euo pipefail
 
 # Configuration
-LLAMA_STACK_REPO="https://github.com/meta-llama/llama-stack.git"
 WORK_DIR="/tmp/llama-stack-integration-tests"
 INFERENCE_MODEL="${INFERENCE_MODEL:-Qwen/Qwen3-0.6B}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Get version dynamically from Containerfile.in (look in parent directory)
-CONTAINERFILE_IN="$SCRIPT_DIR/../distribution/Containerfile.in"
-LLAMA_STACK_VERSION=$(grep -o 'llama-stack==[0-9]\+\.[0-9]\+\.[0-9]\+' "$CONTAINERFILE_IN" | cut -d'=' -f3)
+# Get version dynamically from build.py (look in parent directory)
+BUILD_PY="$SCRIPT_DIR/../distribution/build.py"
+LLAMA_STACK_VERSION=$(grep '^CURRENT_LLAMA_STACK_VERSION' "$BUILD_PY" | head -1 | sed 's/.*= *"\(.*\)".*/\1/')
 if [ -z "$LLAMA_STACK_VERSION" ]; then
-    echo "Error: Could not extract llama-stack version from Containerfile.in"
+    echo "Error: Could not extract llama-stack version from build.py"
     exit 1
+fi
+
+# Determine which repo to use based on version suffix
+if [[ "$LLAMA_STACK_VERSION" == *"+rhai"* ]]; then
+    LLAMA_STACK_REPO="https://github.com/opendatahub-io/llama-stack.git"
+else
+    LLAMA_STACK_REPO="https://github.com/llamastack/llama-stack.git"
 fi
 
 function clone_llama_stack() {
@@ -51,7 +57,7 @@ function run_integration_tests() {
         exit 1
     fi
 
-    uv run pytest -s -v tests/integration/inference/ \
+    uv run --with llama-stack-client==0.3.0 pytest -s -v tests/integration/inference/ \
         --stack-config=server:"$STACK_CONFIG_PATH" \
         --text-model=vllm-inference/"$INFERENCE_MODEL" \
         --embedding-model=granite-embedding-125m \
