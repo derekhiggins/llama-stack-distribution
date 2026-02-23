@@ -148,10 +148,7 @@ def get_dependencies():
                 continue
 
             # New format: just packages, possibly with flags
-            # Fixes: https://issues.redhat.com/browse/RHAIENG-2710
-            # TODO: remove this once we have a stable version of kubernetes.
-            # Use --prerelease=allow to permit pre-release dependencies (e.g. kubernetes==35.0.0a1)
-            cmd_parts = ["RUN", "uv", "pip", "install", "--prerelease=allow"]
+            cmd_parts = ["RUN", "uv", "pip", "install"]
             packages_str = line
 
             # Parse packages and flags from the line
