@@ -13,7 +13,7 @@ apis:
 - files
 providers:
   inference:
-  - provider_id: ${env.VLLM_URL:+vllm-inference}
+  - provider_id: ${env.VLLM_eURL:+vllm-inference}
     provider_type: remote::vllm
     config:
       base_url: ${env.VLLM_URL:=}
