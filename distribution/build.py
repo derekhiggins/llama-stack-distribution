@@ -34,6 +34,7 @@ PINNED_DEPENDENCIES = [
     "'ibm-cos-sdk-core==2.14.2'",
     "'ibm-cos-sdk==2.14.2'",
     "'setuptools==81.0.0'",  # due to bug in milvus-lite with unreleased fix: https://github.com/milvus-io/milvus-lite/pull/323
+    "docstring_parser",  # required by kfp (imported by llama_stack_provider_trustyai_garak) but not declared as dependency
 ]
 
 source_install_command_pypi_client = """RUN uv pip install --no-cache --no-deps git+https://github.com/opendatahub-io/llama-stack.git@{llama_stack_version}
