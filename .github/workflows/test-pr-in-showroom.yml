@@ -1,0 +1,130 @@
+name: Test PR in Showroom
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to build and test'
+        required: true
+        type: string
+      catalog_image:
+        description: 'OLM catalog image (optional, uses default if not specified)'
+        required: false
+        type: string
+      operator_image:
+        description: 'Operator image (optional, uses default if not specified)'
+        required: false
+        type: string
+
+env:
+  IMAGE_NAME: llama-stack-test
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: openshift-cluster-1
+      cancel-in-progress: false
+    permissions:
+      contents: read
+
+    steps:
+      - name: Get PR information
+        id: pr-info
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: ${{ inputs.pr_number }}
+            });
+
+            core.setOutput('sha', pr.data.head.sha);
+            core.setOutput('ref', pr.data.head.ref);
+            core.setOutput('repo', pr.data.head.repo.full_name);
+
+            console.log(`PR #${{ inputs.pr_number }}:`);
+            console.log(`  SHA: ${pr.data.head.sha}`);
+            console.log(`  Ref: ${pr.data.head.ref}`);
+            console.log(`  Repo: ${pr.data.head.repo.full_name}`);
+
+      - name: Checkout PR code
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.pr-info.outputs.repo }}
+          ref: ${{ steps.pr-info.outputs.sha }}
+          path: llama-stack-distribution
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: 3.12
+          version: 0.7.6
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image from PR
+        id: build
+        working-directory: llama-stack-distribution
+        run: |
+          TAG="pr-${{ inputs.pr_number }}-${{ steps.pr-info.outputs.sha }}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Building image: ${{ env.IMAGE_NAME }}:$TAG"
+
+          docker build -f distribution/Containerfile -t ${{ env.IMAGE_NAME }}:$TAG .
+
+      - name: Setup CI environment
+        id: setup
+        uses: opendatahub-io/llama-stack-showroom@ntsh
+        with:
+          catalog_image: ${{ inputs.catalog_image }}
+          llama_stack_image: ${{ env.IMAGE_NAME }}:${{ steps.build.outputs.tag }}
+          operator_image: ${{ inputs.operator_image }}
+          oc_server: ${{ secrets.OC_SERVER }}
+          oc_token: ${{ secrets.OC_TOKEN }}
+          env: |
+            SHOWROOM_PULL_SECRET=${{ secrets.SHOWROOM_PULL_SECRET }}
+            SHOWROOM_VLLM_URL=https://llama-3-2-3b-maas-apicast-production.apps.prod.rhoai.rh-aiservices-bu.com:443/v1
+            SHOWROOM_VLLM_API_TOKEN=${{ secrets.SHOWROOM_VLLM_API_TOKEN }}
+            SHOWROOM_VLLM_EMBEDDING_URL=https://nomic-embed-text-v1-5-maas-apicast-production.apps.prod.rhoai.rh-aiservices-bu.com:443/v1
+            SHOWROOM_VLLM_EMBEDDING_API_TOKEN=${{ secrets.SHOWROOM_VLLM_EMBEDDING_API_TOKEN }}
+
+      - name: Run provision.sh
+        run: |
+          ${{ steps.setup.outputs.scripts_dir }}/provision.sh
+
+      - name: Run tests
+        run: |
+          ${{ steps.setup.outputs.scripts_dir }}/test.sh
+
+      - name: Run unprovision.sh
+        if: always()
+        run: |
+          ${{ steps.setup.outputs.scripts_dir }}/unprovision.sh
+
+      - name: Run cleanup.sh
+        if: always()
+        run: |
+          ${{ steps.setup.outputs.scripts_dir }}/cleanup.sh
+
+      - name: Output summary
+        if: always()
+        run: |
+          echo "# Test PR in Showroom - Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Build Information" >> $GITHUB_STEP_SUMMARY
+          echo "- **PR Number**: #${{ inputs.pr_number }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit SHA**: ${{ steps.pr-info.outputs.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image Tag**: \`${{ steps.build.outputs.tag }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Test Results" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "✅ All tests passed successfully!" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Tests failed. Check the logs above for details." >> $GITHUB_STEP_SUMMARY
+          fi
