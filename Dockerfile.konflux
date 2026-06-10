@@ -22,12 +22,6 @@ RUN uv pip install \
     'torchvision; platform_machine == "ppc64le"' \
     'torchao>=0.12.0; platform_machine == "ppc64le"'
 
-COPY distribution/versions.env ${APP_ROOT}/versions.env
-# TODO: remove --extra-index-url once ogx packages are in the base image index
-RUN . ${APP_ROOT}/versions.env && \
-    uv pip install --extra-index-url https://packages.redhat.com/api/pypi/public-rhai/rhoai/3.5-EA2/cpu-ubi9-test/simple \
-        ogx==${OGX_VERSION} ogx-api==${OGX_VERSION} ogx-client==${OGX_CLIENT_VERSION}
-
 # Install milvus-lite for ppc64le
 RUN if [ "$TARGETARCH" = "ppc64le" ]; then \
         pip install milvus-lite==2.5.1  --index-url https://wheels.developerfirst.ibm.com/ppc64le/linux/+simple/  && \
@@ -37,6 +31,10 @@ RUN if [ "$TARGETARCH" = "ppc64le" ]; then \
         mv /opt/app-root/lib64/python3.12/site-packages/milvus_lite/lib/libgcc_s.so.1 \
            /opt/app-root/lib64/python3.12/site-packages/milvus_lite/lib/libgcc_s.so.1.disabled; \
     fi
+COPY distribution/constraints.txt ${APP_ROOT}/constraints.txt
+COPY distribution/requirements.txt ${APP_ROOT}/requirements.txt
+RUN uv pip install https://packages.redhat.com/api/pulp-content/public-rhai/rhoai/3.5/cpu-ubi9-test/models_dev-1.0.398-2-py3-none-any.whl \
+    && uv pip install --constraint ${APP_ROOT}/constraints.txt -r ${APP_ROOT}/requirements.txt
 
 USER 0
 # install missing RPMs (online, requires subscription)
