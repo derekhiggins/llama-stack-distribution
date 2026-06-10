@@ -15,12 +15,6 @@ LABEL com.redhat.component="ogx-cpu-rhel9-container" \
       com.redhat.license_terms="https://www.redhat.com/en/about/eulas#RHAIIS" \
       com.redhat.aiplatform.image="${BASE_IMAGE}"
 
-COPY --chmod=755 distribution/install-deps.sh ${APP_ROOT}/install-deps.sh
-RUN ${APP_ROOT}/install-deps.sh
-RUN uv pip install \
-    'torch; platform_machine == "ppc64le"' \
-    'torchvision; platform_machine == "ppc64le"' \
-    'torchao>=0.12.0; platform_machine == "ppc64le"'
 
 # Install milvus-lite for ppc64le
 RUN if [ "$TARGETARCH" = "ppc64le" ]; then \
